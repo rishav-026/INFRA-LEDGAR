@@ -64,7 +64,7 @@ Infra-Ledger/
 
 
 ## 4. Architecture (Current)
-
+![image alt](https://github.com/rishav-026/INFRA-LEDGAR/blob/06aaebec0b14eb57dbf16b5119025a6853ac40c0/Architecture.png)
 
 
 ## 5. Explainable Risk Engine
