@@ -1,0 +1,83 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String   @id @default(uuid())
+  firebaseUid  String?  @unique // For future integration or auth provider
+  email        String   @unique
+  displayName  String
+  role         String   @default("citizen") // government, contractor, citizen
+  organization String?
+
+  // Relations
+  projects     Project[] // Projects assigned to the contractor
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Project {
+  id                   String        @id @default(uuid())
+  projectId            String        @unique // Human-readable ID (e.g., proj-001)
+  name                 String
+  description          String?
+  totalBudget          Int           // In paise (1/100 INR)
+  fundsReleased        Int           @default(0)
+  location             String
+  startDate            DateTime
+  endDate              DateTime
+  
+  status               String    @default("active") // active, completed, flagged, archived
+  riskScore            Float?
+  riskLevel            String    @default("normal") // normal, medium, high
+  completionPercentage Int       @default(0)
+  blockchainProjectId  Int?
+
+  // Relations
+  contractorId         String
+  contractor           User          @relation(fields: [contractorId], references: [id])
+  transactions         Transaction[]
+  proofs               Proof[]
+
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+}
+
+model Transaction {
+  id                 String   @id @default(uuid())
+  projectId          String
+  amount             Int      // In paise
+  purpose            String
+  releaseDate        DateTime
+  blockchainTxHash   String   @unique
+  status             String   @default("pending") // pending, confirmed, failed
+
+  // Relations
+  project            Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  createdAt          DateTime @default(now())
+}
+
+model Proof {
+  id          String   @id @default(uuid())
+  projectId   String
+  fileName    String
+  fileType    String   // MIME type
+  ipfsHash    String   @unique
+  description String
+
+  // AI features derived upon upload
+  aiAnalysisCompleted   Boolean @default(false)
+  flaggedAnomalies      String? // JSON string of specific anomalies found
+
+  // Relations
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+}
