@@ -1,37 +1,64 @@
-# Dependencies
+# ---------- Dependencies ----------
 node_modules/
 **/node_modules/
 
-# Build outputs
+# ---------- Build / Tool outputs ----------
 backend/dist/
 frontend/dist/
+frontend/dist-ssr/
 
-# Environment and secrets
+# Hardhat artifacts/cache
+backend/artifacts/
+backend/cache/
+backend/typechain-types/
+
+# ---------- Local database ----------
+backend/dev.db
+backend/dev.db-journal
+
+# ---------- Environment / secrets ----------
 .env
 .env.*
+**/.env
+**/.env.*
 !.env.example
-backend/.env
-frontend/.env
+!**/.env.example
 
-# Logs
+# ---------- Logs ----------
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+lerna-debug.log*
 
-# Coverage and temp
+# ---------- Coverage / temp ----------
 coverage/
 *.tmp
 *.temp
 
-# OS/editor files
+# Local diagnostic dumps in this repo
+backend/error.txt
+backend/format_error.txt
+backend/validate.txt
+frontend/errors.txt
+frontend/build_errors.txt
+frontend/compile_errors.txt
+frontend/compile_errors_2.txt
+
+# ---------- Editor / OS ----------
 .DS_Store
 Thumbs.db
+.idea/
 .vscode/*
 !.vscode/extensions.json
-.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 
-# Python cache (if tooling/scripts are added)
+# ---------- Optional Python tooling ----------
 __pycache__/
 *.pyc

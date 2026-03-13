@@ -10,11 +10,11 @@ import { ProofGallery } from '../components/project/ProofGallery';
 import { FundReleaseModal } from '../components/forms/FundReleaseModal';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Spinner';
-import { getProject, getTransactions, getProofs, releaseFunds } from '../services/api';
+import { getProject, getTransactions, getProofs, getProjectRisk, releaseFunds } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useToastContext } from '../context/ToastContext';
 import { usePolling } from '../hooks/usePolling';
-import type { Project, Transaction, Proof } from '../types';
+import type { Analysis, Project, Transaction, Proof } from '../types';
 import { ChevronLeft, IndianRupee, Upload } from 'lucide-react';
 
 export default function ProjectDetail() {
@@ -25,6 +25,7 @@ export default function ProjectDetail() {
   const [project, setProject] = useState<Project | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [proofs, setProofs] = useState<Proof[]>([]);
+  const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [fundModalOpen, setFundModalOpen] = useState(false);
@@ -37,9 +38,18 @@ export default function ProjectDetail() {
         getTransactions(id),
         getProofs(id),
       ]);
+
+      let riskRes: { project: Project; analysis: Analysis } | null = null;
+      try {
+        riskRes = await getProjectRisk(id);
+      } catch {
+        riskRes = null;
+      }
+
       setProject(projRes);
       setTransactions(txRes);
       setProofs(proofRes);
+      setAnalysis(riskRes?.analysis || null);
       setError(null);
     } catch {
       setError('Project not found');
@@ -109,13 +119,8 @@ export default function ProjectDetail() {
           <div className="lg:col-span-2 space-y-6">
             <RiskCard
               project={project}
-              features={project.riskScore !== null ? {
-                fundsReleasedPct: Math.round((project.fundsReleased / project.totalBudget) * 100),
-                completionPct: project.completionPercentage,
-                proofCount: project.proofCount,
-                daysElapsed: Math.floor((Date.now() - new Date(project.startDate).getTime()) / 86400000),
-                releaseFrequency: transactions.length / Math.max(1, Math.floor((Date.now() - new Date(project.startDate).getTime()) / (7 * 86400000))),
-              } : null}
+              features={analysis?.features || null}
+              analysis={analysis}
             />
           </div>
         </div>

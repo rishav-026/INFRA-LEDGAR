@@ -2,7 +2,7 @@ import { apiClient, setGlobalAuthToken } from './apiClient';
 import axios from 'axios';
 import type { 
   Project, User, Transaction, Proof, DashboardAnalytics, ActivityItem, 
-  ApiResponse, CreateProjectInput, ReleaseFundInput 
+  ApiResponse, CreateProjectInput, ReleaseFundInput, Analysis
 } from '../types';
 
 export class ApiError extends Error {
@@ -241,7 +241,16 @@ export const getDashboardAnalytics = async () => {
 
 export const analyzeProject = async (projectId: string) => {
   try {
-    const res = await apiClient.post<ApiResponse<{ project: Project }>>(`/projects/${projectId}/analyze`);
+    const res = await apiClient.post<ApiResponse<{ project: Project; analysis: Analysis }>>(`/projects/${projectId}/analyze`);
+    return res.data.data;
+  } catch (error) {
+    throw toApiError(error);
+  }
+};
+
+export const getProjectRisk = async (projectId: string) => {
+  try {
+    const res = await apiClient.get<ApiResponse<{ project: Project; analysis: Analysis }>>(`/projects/${projectId}/risk`);
     return res.data.data;
   } catch (error) {
     throw toApiError(error);

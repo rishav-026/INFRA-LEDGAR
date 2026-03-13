@@ -91,23 +91,33 @@ export interface Proof {
 export interface AnalysisFeatures {
   fundsReleasedPct: number;
   completionPct: number;
+  budgetProgressGapPct?: number;
   proofCount: number;
   daysElapsed: number;
+  transactionCount?: number;
   releaseFrequency: number;
+  meanReleaseSizePct?: number;
+}
+
+export interface WeightedFeatureContribution {
+  key: string;
+  label: string;
+  weight: number;
+  normalized: number;
+  contribution: number;
 }
 
 export interface Analysis {
-  id: string;
-  projectId: string;
+  provider: string;
+  modelVersion?: string;
+  confidence?: number;
+  dataQuality?: 'insufficient' | 'sufficient';
   riskScore: number;
   riskLevel: RiskLevel;
   features: AnalysisFeatures;
-  anomalyFlag: boolean;
-  reviewedBy: string | null;
-  reviewNote: string | null;
-  reviewedAt: string | null;
-  analyzedAt: string;
-  modelVersion: string;
+  flaggedAnomalies?: string[];
+  reasoning?: string;
+  weightedFeatures?: WeightedFeatureContribution[];
 }
 
 /* ─── Dashboard Analytics ─── */

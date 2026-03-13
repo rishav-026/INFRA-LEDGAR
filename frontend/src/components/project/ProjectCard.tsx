@@ -11,7 +11,8 @@ interface ProjectCardProps {
 
 export function ProjectCard({ project }: ProjectCardProps) {
   const navigate = useNavigate();
-  const pct = percentage(project.fundsReleased, project.totalBudget);
+  const releasedPct = percentage(project.fundsReleased, project.totalBudget);
+  const completionPct = Math.min(Math.max(project.completionPercentage || 0, 0), 100);
 
   return (
     <Card hoverable onClick={() => navigate(`/project/${project.id}`)}>
@@ -28,15 +29,26 @@ export function ProjectCard({ project }: ProjectCardProps) {
         </div>
 
         {/* Budget bar */}
-        <div>
+        <div className="space-y-2">
           <div className="flex items-center justify-between text-xs text-text-secondary mb-1">
             <span>{formatCurrencyShort(project.fundsReleased)} released</span>
             <span>{formatCurrencyShort(project.totalBudget)} total</span>
           </div>
-          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+          <div className="h-2 bg-surface-tertiary rounded-full overflow-hidden">
             <div
               className="h-full bg-brand-500 rounded-full transition-all duration-500"
-              style={{ width: `${Math.min(pct, 100)}%` }}
+              style={{ width: `${Math.min(releasedPct, 100)}%` }}
+            />
+          </div>
+
+          <div className="flex items-center justify-between text-xs text-text-secondary mb-1">
+            <span>Completion</span>
+            <span>{completionPct}%</span>
+          </div>
+          <div className="h-2 bg-surface-tertiary rounded-full overflow-hidden">
+            <div
+              className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+              style={{ width: `${completionPct}%` }}
             />
           </div>
         </div>

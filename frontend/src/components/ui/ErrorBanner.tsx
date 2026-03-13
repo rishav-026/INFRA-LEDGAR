@@ -12,7 +12,7 @@ export function ErrorBanner({ message, onRetry, dismissible = true }: ErrorBanne
   if (dismissed) return null;
 
   return (
-    <div className="flex items-center gap-3 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-red-800">
+    <div className="flex items-center gap-3 px-4 py-3 bg-linear-to-r from-red-50 to-rose-50 border border-red-200 rounded-xl text-red-800 shadow-[0_10px_22px_rgba(239,68,68,0.12)]">
       <AlertCircle size={18} className="shrink-0" />
       <p className="text-sm flex-1">{message}</p>
       {onRetry && (

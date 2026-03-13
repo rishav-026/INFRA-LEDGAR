@@ -53,6 +53,87 @@ Infra-Ledger/
 └── SETUP_FREE_TIER.md
 ```
 
+## 2.1 Architecture Diagrams
+
+### System Architecture
+
+```mermaid
+flowchart LR
+  U[Users<br/>Citizen / Government / Contractor] --> F[Frontend<br/>React + Vite]
+  F -->|REST API (JWT)| B[Backend API<br/>Express + TypeScript]
+
+  B --> DB[(SQLite via Prisma)]
+  B --> IPFS[Pinata / IPFS]
+  B --> CHAIN[Polygon Amoy<br/>InfraLedger Smart Contract]
+  B --> AI[AI Risk Service<br/>Heuristic/Async]
+
+  CHAIN --> EXPLORER[Polygonscan]
+  IPFS --> GATEWAY[IPFS Gateway]
+
+  subgraph Backend Modules
+    R1[Auth Routes]
+    R2[Project Routes]
+    R3[User Routes]
+    R4[Analytics Routes]
+    S1[Auth Service]
+    S2[Blockchain Service]
+    S3[IPFS Service]
+    S4[AI Service]
+  end
+
+  B --- R1
+  B --- R2
+  B --- R3
+  B --- R4
+  R1 --- S1
+  R2 --- S2
+  R2 --- S3
+  R2 --- S4
+```
+
+### Core Workflow
+
+```mermaid
+sequenceDiagram
+  participant G as Government User
+  participant C as Contractor User
+  participant FE as Frontend
+  participant BE as Backend
+  participant SC as Smart Contract (Amoy)
+  participant IP as Pinata/IPFS
+  participant DB as Database
+  participant AI as AI Risk Engine
+
+  G->>FE: Login
+  FE->>BE: POST /auth/login
+  BE-->>FE: JWT + profile
+
+  G->>FE: Create Project
+  FE->>BE: POST /projects
+  BE->>SC: createProject(...)
+  SC-->>BE: txHash + on-chain project id
+  BE->>DB: Save project
+  BE-->>FE: Project created
+
+  G->>FE: Release Funds
+  FE->>BE: POST /projects/:id/release-funds
+  BE->>SC: releaseFunds(projectId, amount)
+  SC-->>BE: txHash
+  BE->>DB: Save transaction + update project fundsReleased
+  BE-->>FE: Success + txHash
+
+  C->>FE: Upload Proof
+  FE->>BE: POST /projects/:id/proofs (multipart)
+  BE->>IP: Upload file
+  IP-->>BE: CID (ipfsHash)
+  BE->>SC: addProof(projectId, ipfsHash)
+  SC-->>BE: txHash
+  BE->>DB: Save proof
+  BE->>AI: Trigger async analysis
+  AI->>DB: Update risk score/level
+  BE-->>FE: Success + CID + txHash
+```
+
 ## 3. Core Features
 
 - Public project listing with analytics
@@ -62,7 +143,7 @@ Infra-Ledger/
 - Role-based access control
 - Proof upload to IPFS (real Pinata mode or mock fallback)
 - Blockchain tx recording for fund release and proofs (real or mock fallback)
-- Heuristic AI risk scoring and scheduled refresh
+- Gemini-based AI risk scoring with heuristic fallback and scheduled refresh
 
 ## 4. Prerequisites
 
@@ -93,13 +174,20 @@ CONTRACT_ADDRESS=""
 PRIVATE_KEY=""
 
 OPENAI_API_KEY=""
+GEMINI_API_KEY=""
+GEMINI_MODEL="gemini-2.0-flash-lite"
+GEMINI_MAX_REQUESTS_PER_DAY=8
+GEMINI_MIN_REQUEST_INTERVAL_MS=900000
+GEMINI_QUOTA_COOLDOWN_MS=21600000
 AI_CRON_INTERVAL_HOURS=6
 ```
 
 Notes:
 - Empty Pinata keys => mock IPFS hash fallback.
 - Empty contract/private key => mock blockchain tx fallback.
-- AI currently runs heuristic mode without paid API dependency.
+- Empty Gemini key => heuristic AI fallback (fully local, no paid API).
+- Scheduler runs heuristic-only by design to preserve Gemini free-tier quota.
+- Gemini calls are throttled by daily cap, min interval, and quota cooldown.
 
 ### 5.2 Frontend .env
 
@@ -227,6 +315,11 @@ After deploy:
 ### Mock tx/hash still appearing
 - Ensure `CONTRACT_ADDRESS` and `PRIVATE_KEY` are set.
 - Restart backend after `.env` edits.
+
+### AI still using heuristic mode
+- Ensure `GEMINI_API_KEY` is set in `backend/.env`.
+- Optionally set `GEMINI_MODEL` (default: `gemini-2.0-flash-lite`).
+- Restart backend after `.env` changes.
 
 ## 12. Security Notes
 

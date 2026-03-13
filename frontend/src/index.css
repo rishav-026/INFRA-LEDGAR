@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@600;700&display=swap');
 @import "tailwindcss";
 
 /* ─── Custom Theme ─── */
@@ -16,6 +17,7 @@
 
   --color-surface: #ffffff;
   --color-surface-secondary: #f8fafc;
+  --color-surface-tertiary: #eef2f7;
   --color-border: #e2e8f0;
   --color-text-primary: #0f172a;
   --color-text-secondary: #64748b;
@@ -30,12 +32,38 @@
   }
 
   body {
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'Manrope', system-ui, -apple-system, sans-serif;
     color: var(--color-text-primary);
-    background: var(--color-surface-secondary);
+    background:
+      radial-gradient(1200px 420px at 5% -10%, rgba(37, 99, 235, 0.12), transparent 58%),
+      radial-gradient(900px 340px at 95% -20%, rgba(16, 185, 129, 0.09), transparent 55%),
+      linear-gradient(180deg, #f6f8fc 0%, #f1f5fa 60%, #eef3f8 100%);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    min-height: 100vh;
   }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: 'Sora', 'Manrope', system-ui, sans-serif;
+  }
+}
+
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.rise-in {
+  animation: riseIn 380ms ease-out;
 }
 
 /* ─── Skeleton animation ─── */

@@ -29,6 +29,67 @@ const sendError = (
   });
 };
 
+const hasJpegSignature = (buffer: Buffer) =>
+  buffer.length >= 4 &&
+  buffer[0] === 0xff &&
+  buffer[1] === 0xd8 &&
+  buffer[buffer.length - 2] === 0xff &&
+  buffer[buffer.length - 1] === 0xd9;
+
+const hasPngSignature = (buffer: Buffer) =>
+  buffer.length >= 8 &&
+  buffer[0] === 0x89 &&
+  buffer[1] === 0x50 &&
+  buffer[2] === 0x4e &&
+  buffer[3] === 0x47;
+
+const hasPdfSignature = (buffer: Buffer) =>
+  buffer.length >= 5 &&
+  buffer[0] === 0x25 &&
+  buffer[1] === 0x50 &&
+  buffer[2] === 0x44 &&
+  buffer[3] === 0x46 &&
+  buffer[4] === 0x2d;
+
+const hasZipSignature = (buffer: Buffer) =>
+  buffer.length >= 4 &&
+  buffer[0] === 0x50 &&
+  buffer[1] === 0x4b &&
+  (buffer[2] === 0x03 || buffer[2] === 0x05 || buffer[2] === 0x07) &&
+  (buffer[3] === 0x04 || buffer[3] === 0x06 || buffer[3] === 0x08);
+
+const validateProofIntegrity = (file: Express.Multer.File) => {
+  const minSizeByType: Record<string, number> = {
+    'image/jpeg': 1024,
+    'image/png': 1024,
+    'application/pdf': 256,
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 1024,
+  };
+
+  const minSize = minSizeByType[file.mimetype] || 256;
+  if (file.size < minSize) {
+    return { ok: false, reason: `File appears too small for ${file.mimetype}` };
+  }
+
+  if (file.mimetype === 'image/jpeg' && !hasJpegSignature(file.buffer)) {
+    return { ok: false, reason: 'JPEG file signature is invalid or corrupted' };
+  }
+  if (file.mimetype === 'image/png' && !hasPngSignature(file.buffer)) {
+    return { ok: false, reason: 'PNG file signature is invalid or corrupted' };
+  }
+  if (file.mimetype === 'application/pdf' && !hasPdfSignature(file.buffer)) {
+    return { ok: false, reason: 'PDF file signature is invalid or corrupted' };
+  }
+  if (
+    file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' &&
+    !hasZipSignature(file.buffer)
+  ) {
+    return { ok: false, reason: 'DOCX file signature is invalid or corrupted' };
+  }
+
+  return { ok: true };
+};
+
 const getOnChainProjectId = (project: { blockchainProjectId: number | null; projectId: string }) => {
   if (project.blockchainProjectId) return project.blockchainProjectId;
   // Backward compatibility fallback for older records.
@@ -114,6 +175,26 @@ router.get('/:id', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Fetch project detail error:', error);
     res.status(500).json({ success: false, error: { message: 'Failed to fetch project details' } });
+  }
+});
+
+// Get explainable risk analysis (Public)
+router.get('/:id/risk', async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const project = await prisma.project.findUnique({ where: { id }, select: { id: true } });
+    if (!project) {
+      return sendError(res, 404, 'Project not found', 'PROJECT_NOT_FOUND');
+    }
+
+    const analysis = await aiService.analyzeProject(id);
+    return res.json({ success: true, data: analysis });
+  } catch (error) {
+    console.error('Risk analysis fetch failed:', error);
+    return res.status(500).json({
+      success: false,
+      error: { message: 'Failed to compute risk analysis', code: 'RISK_ANALYSIS_FAILED' },
+    });
   }
 });
 
@@ -226,6 +307,13 @@ router.post('/:id/proofs', requireAuth, requireRole(['contractor']), upload.sing
     if (!allowedMimeTypes.includes(file.mimetype)) {
       return sendError(res, 400, 'Unsupported file type', 'PROOF_UNSUPPORTED_FILE_TYPE', {
         file: 'Only JPG, PNG, PDF, DOCX are allowed',
+      });
+    }
+
+    const integrity = validateProofIntegrity(file);
+    if (!integrity.ok) {
+      return sendError(res, 400, integrity.reason || 'Invalid proof file content', 'PROOF_INVALID_CONTENT', {
+        file: integrity.reason || 'Proof file is invalid or corrupted',
       });
     }
 

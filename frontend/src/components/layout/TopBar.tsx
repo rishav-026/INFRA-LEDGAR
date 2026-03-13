@@ -27,15 +27,15 @@ export function TopBar() {
     : [];
 
   return (
-    <header className="sticky top-0 z-40 bg-surface/95 backdrop-blur-sm border-b border-border">
+    <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/80 backdrop-blur-md shadow-[0_4px_20px_rgba(15,23,42,0.06)]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
-        <div className="flex items-center justify-between h-14">
+        <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2 text-text-primary font-bold text-lg">
-            <div className="w-8 h-8 rounded-lg bg-brand-600 flex items-center justify-center text-white text-sm font-bold">
+            <div className="w-9 h-9 rounded-xl bg-linear-to-br from-brand-500 to-brand-700 shadow-[0_8px_20px_rgba(37,99,235,0.35)] flex items-center justify-center text-white text-sm font-bold">
               IL
             </div>
-            <span className="hidden sm:inline">InfraLedger</span>
+            <span className="hidden sm:inline tracking-tight">InfraLedger</span>
           </Link>
 
           {/* Desktop nav */}
@@ -46,7 +46,7 @@ export function TopBar() {
                 to={link.path}
                 className={`
                   inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors
-                  ${isActive(link.path) ? 'bg-brand-50 text-brand-700' : 'text-text-secondary hover:text-text-primary hover:bg-surface-secondary'}
+                  ${isActive(link.path) ? 'bg-brand-50 text-brand-700 border border-brand-100' : 'text-text-secondary hover:text-text-primary hover:bg-slate-100/70'}
                 `}
               >
                 {link.icon} {link.label}
