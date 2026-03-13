@@ -60,6 +60,8 @@ Infra-Ledger/
 ├── ux_screen_breakdown.md
 └── SETUP_FREE_TIER.md
 ```
+![image alt](https://github.com/rishav-026/INFRA-LEDGAR/blob/ef3bb496ec42d8fecbd59169b946568ccfa38c2e/Cards-Components.png)
+
 
 ## 4. Architecture (Current)
 
