@@ -63,20 +63,6 @@ Infra-Ledger/
 
 ## 4. Architecture (Current)
 
-```mermaid
-flowchart LR
-  U[Users\nCitizen / Government / Contractor] --> F[Frontend\nReact + Vite]
-  F -->|REST API (JWT)| B[Backend API \n Express + TypeScript]
-
-  B --> DB[(SQLite via Prisma)]
-  B --> IPFS[Pinata / IPFS]
-  B --> CHAIN[Polygon Amoy\nInfraLedger Contract]
-  B --> RISK[Local ML Risk Engine\nExplainable]
-
-  CHAIN --> EXPLORER[Polygonscan]
-  IPFS --> GATEWAY[IPFS Gateway]
-```
-
 
 
 ## 5. Explainable Risk Engine
