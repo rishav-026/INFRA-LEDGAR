@@ -1,61 +1,67 @@
 # InfraLedger
 
-InfraLedger is a transparency-focused infrastructure tracking platform.
+InfraLedger is a full-stack infrastructure monitoring platform for transparent public project tracking.
+
 It combines:
-- a public dashboard for citizens,
-- role-based workflows for government and contractors,
-- IPFS proof storage,
-- blockchain-backed fund/proof records,
-- AI risk scoring for project monitoring.
+- role-based operations (government and contractor)
+- public-facing project visibility
+- blockchain-backed fund/proof records
+- IPFS evidence storage
+- local explainable ML risk assessment
 
-This repository is a monorepo with separate backend and frontend apps.
+This repository is a monorepo with separate backend and frontend applications.
 
-## 1. Tech Stack
+## 1. Current Status
+
+Implemented and working:
+- backend REST APIs for auth, users, projects, analytics
+- fund release and proof recording with blockchain tx hashes
+- proof uploads to IPFS with integrity validation
+- explainable local ML risk scoring (`local-ml-risk-v2`)
+- redesigned frontend dashboard UI/UX (cards, gradients, sorting/search, better loading/error states)
+
+Important:
+- backend can run with real integrations (Pinata + Amoy) or fallback mock mode when keys are missing
+
+## 2. Tech Stack
 
 Backend:
 - Node.js + Express + TypeScript
-- Prisma ORM
-- SQLite (local dev)
-- Ethers.js for Polygon Amoy integration
-- Multer + Pinata API for IPFS file uploads
+- Prisma ORM + SQLite (local dev)
+- Ethers.js + Hardhat (Polygon Amoy)
+- Multer for file intake
 
 Frontend:
 - React + TypeScript + Vite
-- Axios
+- Tailwind CSS (v4)
 - Recharts
-- Tailwind-based styling
+- Lucide icons
 
-Smart Contract:
-- Solidity
-- Hardhat
-- Polygon Amoy testnet deployment target
-
-## 2. Repository Structure
+## 3. Monorepo Structure
 
 ```text
 Infra-Ledger/
 ├── backend/
-│   ├── contracts/            # Solidity contracts
-│   ├── scripts/              # Hardhat deploy scripts
-│   ├── prisma/               # Prisma schema + local DB
+│   ├── contracts/              # Solidity contracts
+│   ├── scripts/                # Hardhat deploy scripts
+│   ├── prisma/                 # Prisma schema + local DB
 │   └── src/
-│       ├── routes/           # API routes
-│       ├── services/         # Auth/IPFS/Blockchain/AI services
+│       ├── routes/             # API routes
+│       ├── services/           # Auth, IPFS, blockchain, risk engine
 │       └── server.ts
 ├── frontend/
 │   └── src/
 │       ├── pages/
 │       ├── components/
 │       ├── services/
-│       └── context/
+│       ├── context/
+│       └── types/
 ├── architecture_roadmap.md
 ├── ux_screen_breakdown.md
 └── SETUP_FREE_TIER.md
 ```
 
-## 2.1 Architecture Diagrams
-
-### System Architecture
+## 4. Architecture (Current)
 
 ```mermaid
 flowchart LR
@@ -64,179 +70,42 @@ flowchart LR
 
   B --> DB[(SQLite via Prisma)]
   B --> IPFS[Pinata / IPFS]
-  B --> CHAIN[Polygon Amoy<br/>InfraLedger Smart Contract]
-  B --> AI[AI Risk Service<br/>Heuristic/Async]
+  B --> CHAIN[Polygon Amoy<br/>InfraLedger Contract]
+  B --> RISK[Local ML Risk Engine<br/>Explainable]
 
   CHAIN --> EXPLORER[Polygonscan]
   IPFS --> GATEWAY[IPFS Gateway]
-
-  subgraph Backend Modules
-    R1[Auth Routes]
-    R2[Project Routes]
-    R3[User Routes]
-    R4[Analytics Routes]
-    S1[Auth Service]
-    S2[Blockchain Service]
-    S3[IPFS Service]
-    S4[AI Service]
-  end
-
-  B --- R1
-  B --- R2
-  B --- R3
-  B --- R4
-  R1 --- S1
-  R2 --- S2
-  R2 --- S3
-  R2 --- S4
 ```
 
-### Core Workflow
+## 5. Explainable Risk Engine
 
-```mermaid
-sequenceDiagram
-  participant G as Government User
-  participant C as Contractor User
-  participant FE as Frontend
-  participant BE as Backend
-  participant SC as Smart Contract (Amoy)
-  participant IP as Pinata/IPFS
-  participant DB as Database
-  participant AI as AI Risk Engine
+Model provider:
+- `provider: local-ml`
+- `modelVersion: local-ml-risk-v2`
 
-  G->>FE: Login
-  FE->>BE: POST /auth/login
-  BE-->>FE: JWT + profile
+Main feature set:
+- funds released percentage
+- completion percentage
+- budget-progress gap
+- proof count
+- days elapsed
+- transaction count
+- release frequency
+- mean release size percentage
 
-  G->>FE: Create Project
-  FE->>BE: POST /projects
-  BE->>SC: createProject(...)
-  SC-->>BE: txHash + on-chain project id
-  BE->>DB: Save project
-  BE-->>FE: Project created
+Output fields:
+- `riskScore` (0-1)
+- `riskLevel` (`normal`, `medium`, `high`)
+- `confidence`
+- `reasoning`
+- `flaggedAnomalies`
+- `weightedFeatures` (per-factor contribution)
+- `dataQuality` (`sufficient` or `insufficient`)
 
-  G->>FE: Release Funds
-  FE->>BE: POST /projects/:id/release-funds
-  BE->>SC: releaseFunds(projectId, amount)
-  SC-->>BE: txHash
-  BE->>DB: Save transaction + update project fundsReleased
-  BE-->>FE: Success + txHash
+Special handling:
+- if there is no transactional/proof activity, model returns insufficient-data mode instead of a misleading score
 
-  C->>FE: Upload Proof
-  FE->>BE: POST /projects/:id/proofs (multipart)
-  BE->>IP: Upload file
-  IP-->>BE: CID (ipfsHash)
-  BE->>SC: addProof(projectId, ipfsHash)
-  SC-->>BE: txHash
-  BE->>DB: Save proof
-  BE->>AI: Trigger async analysis
-  AI->>DB: Update risk score/level
-  BE-->>FE: Success + CID + txHash
-```
-
-## 3. Core Features
-
-- Public project listing with analytics
-- Project detail with transactions and proofs
-- Government project creation and fund release
-- Contractor proof upload with file validation
-- Role-based access control
-- Proof upload to IPFS (real Pinata mode or mock fallback)
-- Blockchain tx recording for fund release and proofs (real or mock fallback)
-- Gemini-based AI risk scoring with heuristic fallback and scheduled refresh
-
-## 4. Prerequisites
-
-- Node.js 20+
-- npm
-- Optional for real blockchain mode:
-  - funded Polygon Amoy wallet
-  - deployed InfraLedger contract address
-
-## 5. Environment Configuration
-
-### 5.1 Backend .env
-
-Create `backend/.env` from `backend/.env.example`.
-
-Recommended local values:
-
-```env
-PORT=4001
-DATABASE_URL="file:./dev.db"
-JWT_SECRET="dev-super-secret-jwt-key"
-
-PINATA_API_KEY=""
-PINATA_SECRET_API_KEY=""
-
-POLYGON_RPC_URL="https://rpc-amoy.polygon.technology/"
-CONTRACT_ADDRESS=""
-PRIVATE_KEY=""
-
-OPENAI_API_KEY=""
-GEMINI_API_KEY=""
-GEMINI_MODEL="gemini-2.0-flash-lite"
-GEMINI_MAX_REQUESTS_PER_DAY=8
-GEMINI_MIN_REQUEST_INTERVAL_MS=900000
-GEMINI_QUOTA_COOLDOWN_MS=21600000
-AI_CRON_INTERVAL_HOURS=6
-```
-
-Notes:
-- Empty Pinata keys => mock IPFS hash fallback.
-- Empty contract/private key => mock blockchain tx fallback.
-- Empty Gemini key => heuristic AI fallback (fully local, no paid API).
-- Scheduler runs heuristic-only by design to preserve Gemini free-tier quota.
-- Gemini calls are throttled by daily cap, min interval, and quota cooldown.
-
-### 5.2 Frontend .env
-
-Create `frontend/.env`:
-
-```env
-VITE_API_BASE_URL=http://localhost:4001/api
-```
-
-## 6. Install and Run
-
-### 6.1 Backend
-
-```powershell
-cd backend
-npm install
-npm run setup:free
-npm run dev
-```
-
-Useful backend scripts:
-- `npm run build`
-- `npm run db:push`
-- `npm run db:seed`
-- `npm run prisma:generate`
-- `npm run contract:compile`
-- `npm run contract:deploy:amoy`
-
-### 6.2 Frontend
-
-```powershell
-cd frontend
-npm install
-npm run dev
-```
-
-Fixed dev server port is configured to `5173`.
-
-## 7. Demo Accounts
-
-Seeded users:
-- `gov@demo.com`
-- `build@demo.com`
-- `citizen@demo.com`
-
-For current MVP auth route, password is not strictly validated against stored hashes.
-Use `demo123` in UI examples.
-
-## 8. API Overview
+## 6. API Overview
 
 Auth:
 - `POST /api/auth/login`
@@ -245,10 +114,11 @@ Auth:
 Projects:
 - `GET /api/projects`
 - `GET /api/projects/:id`
+- `GET /api/projects/:id/risk` (public explainable risk snapshot)
 - `POST /api/projects` (government)
 - `POST /api/projects/:id/release-funds` (government)
 - `POST /api/projects/:id/proofs` (contractor)
-- `POST /api/projects/:id/analyze` (government)
+- `POST /api/projects/:id/analyze` (government manual trigger)
 
 Users:
 - `GET /api/users` (government)
@@ -257,79 +127,139 @@ Users:
 Analytics:
 - `GET /api/analytics`
 
-## 9. Smart Contract Setup
+## 7. Security/Validation Highlights
 
-Contract file:
-- `backend/contracts/InfraLedger.sol`
+Proof uploads now include integrity checks:
+- minimum file-size checks by MIME type
+- signature checks for JPEG/PNG/PDF/DOCX
+- invalid files rejected with `PROOF_INVALID_CONTENT`
 
-Compile:
+General safety:
+- RBAC guards on sensitive routes
+- explicit validation and structured error envelopes
+
+## 8. Environment Setup
+
+### 8.1 Backend .env
+
+Create `backend/.env` from `backend/.env.example`.
+
+```env
+PORT=4001
+DATABASE_URL="file:./dev.db"
+JWT_SECRET="dev-super-secret-jwt-key"
+
+# IPFS (optional)
+PINATA_API_KEY=""
+PINATA_SECRET_API_KEY=""
+
+# Blockchain (optional)
+POLYGON_RPC_URL="https://rpc-amoy.polygon.technology/"
+CONTRACT_ADDRESS=""
+PRIVATE_KEY=""
+
+# Risk scheduler interval
+AI_CRON_INTERVAL_HOURS=6
+```
+
+Notes:
+- Empty Pinata keys => mock CID behavior.
+- Empty contract/private key => mock blockchain tx behavior.
+- Risk scoring is local and does not require paid API credentials.
+
+### 8.2 Frontend .env
+
+```env
+VITE_API_BASE_URL=http://localhost:4001/api
+```
+
+## 9. Run Locally
+
+Backend:
 
 ```powershell
 cd backend
-npm run contract:compile
+npm install
+npm run setup:free
+npm run dev
 ```
 
-Deploy to Amoy:
+Frontend:
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+Build checks:
 
 ```powershell
 cd backend
-npm run contract:deploy:amoy
+npm run build
+
+cd ../frontend
+npm run build
 ```
 
-After deploy:
-1. Copy deployed contract address.
-2. Set `CONTRACT_ADDRESS` and `PRIVATE_KEY` in `backend/.env`.
-3. Restart backend.
+## 10. Backend Scripts
 
-## 10. End-to-End Validation Flow
+- `npm run dev`
+- `npm run build`
+- `npm run prisma:generate`
+- `npm run db:push`
+- `npm run db:seed`
+- `npm run setup:free`
+- `npm run contract:compile`
+- `npm run contract:deploy:amoy`
 
-1. Start backend and frontend.
-2. Login as government.
-3. Create a project.
-4. Release funds.
-5. Login as contractor.
-6. Upload a proof file.
-7. Confirm:
-- `ipfsHash` is real CID when Pinata keys are set.
-- `blockchainTxHash` is non-mock when wallet + contract are configured and funded.
+## 11. Demo Accounts
 
-## 11. Troubleshooting
+- `gov@demo.com`
+- `build@demo.com`
+- `citizen@demo.com`
 
-### Cannot load projects on frontend
-- Verify backend URL in `frontend/.env`.
-- Verify backend health:
-  - `http://localhost:4001/health`
+Password used in local demo flows: `demo123`
 
-### Prisma EPERM on Windows
-- Stop node processes holding Prisma engine DLL, then rerun:
-  - `npm run prisma:generate`
+## 12. UI/UX (Current)
 
-### Vite port conflicts
-- Port is fixed at 5173 with strict mode.
-- Stop the process using 5173, then restart frontend.
+Implemented frontend improvements:
+- modern analytics-style visual language
+- card-first layout with soft shadows and rounded containers
+- risk/status badges and dual progress bars
+- searchable/sortable fund release table
+- enhanced skeleton states and error banners
+- responsive desktop/tablet behavior
 
-### Proof upload fails with INSUFFICIENT_FUNDS
-- Fund the wallet from `PRIVATE_KEY` on Polygon Amoy.
-- Confirm balance of the same wallet used by backend.
+## 13. Troubleshooting
 
-### Mock tx/hash still appearing
-- Ensure `CONTRACT_ADDRESS` and `PRIVATE_KEY` are set.
-- Restart backend after `.env` edits.
+### Frontend cannot load data
+- verify `VITE_API_BASE_URL`
+- verify backend health: `GET /health`
 
-### AI still using heuristic mode
-- Ensure `GEMINI_API_KEY` is set in `backend/.env`.
-- Optionally set `GEMINI_MODEL` (default: `gemini-2.0-flash-lite`).
-- Restart backend after `.env` changes.
+### Vite dev server port issues
+- stop process using 5173
+- rerun `npm run dev`
 
-## 12. Security Notes
+### Proof upload fails
+- check file type and integrity
+- ensure uploaded file is a valid JPEG/PNG/PDF/DOCX and not a tiny/corrupt placeholder
 
-- Never commit real secrets in `.env` files.
-- Rotate exposed API keys immediately if accidentally shared.
-- Use scoped Pinata keys with minimum required permissions.
-- Use a dedicated low-risk dev wallet for testnet.
+### Blockchain tx failures
+- verify `CONTRACT_ADDRESS`, `PRIVATE_KEY`, and Amoy balance
 
-## 13. Project Documents
+### Prisma Windows EPERM
+- stop locking Node processes and rerun `npm run prisma:generate`
 
-- `architecture_roadmap.md`: phased integration plan
-- `ux_screen_breakdown.md`: full screen-level UX spec
-- `SETUP_FREE_TIER.md`: free-first setup guide
+## 14. Security Notes
+
+- Never commit `.env` secrets.
+- Rotate exposed API keys immediately.
+- Use restricted-scope keys for external providers.
+- Use a dedicated low-risk wallet for testnet operations.
+
+## 15. Additional Docs
+
+- `architecture_roadmap.md`
+- `ux_screen_breakdown.md`
+- `SETUP_FREE_TIER.md`
