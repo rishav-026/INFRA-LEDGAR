@@ -65,13 +65,13 @@ Infra-Ledger/
 
 ```mermaid
 flowchart LR
-  U[Users<br/>Citizen / Government / Contractor] --> F[Frontend<br/>React + Vite]
-  F -->|REST API (JWT)| B[Backend API<br/>Express + TypeScript]
+  U[Users\nCitizen / Government / Contractor] --> F[Frontend\nReact + Vite]
+  F -->|REST API (JWT)| B[Backend API \n Express + TypeScript]
 
   B --> DB[(SQLite via Prisma)]
   B --> IPFS[Pinata / IPFS]
-  B --> CHAIN[Polygon Amoy<br/>InfraLedger Contract]
-  B --> RISK[Local ML Risk Engine<br/>Explainable]
+  B --> CHAIN[Polygon Amoy\nInfraLedger Contract]
+  B --> RISK[Local ML Risk Engine\nExplainable]
 
   CHAIN --> EXPLORER[Polygonscan]
   IPFS --> GATEWAY[IPFS Gateway]
