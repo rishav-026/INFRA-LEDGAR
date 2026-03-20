@@ -38,10 +38,30 @@ async function main() {
     },
   });
 
+  const checker = await prisma.user.create({
+    data: {
+      email: 'checker@demo.com',
+      displayName: 'Finance Checker',
+      role: 'government',
+      organization: 'Controller Office',
+    },
+  });
+
+  const approver = await prisma.user.create({
+    data: {
+      email: 'approver@demo.com',
+      displayName: 'Chief Approver',
+      role: 'government',
+      organization: 'Treasury Approval Board',
+    },
+  });
+
   console.log('✅ Seeding completed! Created users:');
   console.log(`- ${citizen.email} (${citizen.role})`);
   console.log(`- ${contractor.email} (${contractor.role}) ID: ${contractor.id}`);
   console.log(`- ${government.email} (${government.role})`);
+  console.log(`- ${checker.email} (${checker.role})`);
+  console.log(`- ${approver.email} (${approver.role})`);
 }
 
 main()

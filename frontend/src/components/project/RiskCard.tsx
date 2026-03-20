@@ -21,7 +21,8 @@ const featureLabels: Record<keyof AnalysisFeatures, string> = {
 };
 
 export function RiskCard({ project, features, analysis }: RiskCardProps) {
-  const displayScore = analysis?.riskScore ?? project.riskScore;
+  const rawScore = analysis?.riskScore ?? project.riskScore;
+  const displayScore = rawScore === null ? null : (rawScore <= 1 ? rawScore * 100 : rawScore);
   const displayLevel = analysis?.riskLevel ?? project.riskLevel;
   const displayAnomalies = analysis?.flaggedAnomalies || [];
   const displayFactors = analysis?.weightedFeatures || [];
@@ -52,7 +53,7 @@ export function RiskCard({ project, features, analysis }: RiskCardProps) {
       ) : (
         <div className="space-y-4">
           <div className="flex items-center gap-3">
-            <span className="text-2xl font-bold text-text-primary">{displayScore.toFixed(2)}</span>
+            <span className="text-2xl font-bold text-text-primary">{displayScore.toFixed(1)}/100</span>
             <RiskBadge level={displayLevel} />
           </div>
 

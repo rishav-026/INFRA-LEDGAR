@@ -15,6 +15,10 @@ backend/typechain-types/
 # ---------- Local database ----------
 backend/dev.db
 backend/dev.db-journal
+backend/prisma/dev.db
+backend/prisma/dev.db-journal
+backend/prisma/dev.db-shm
+backend/prisma/dev.db-wal
 
 # ---------- Environment / secrets ----------
 .env

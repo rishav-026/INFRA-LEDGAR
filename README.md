@@ -16,12 +16,14 @@ This repository is a monorepo with separate backend and frontend applications.
 Implemented and working:
 - backend REST APIs for auth, users, projects, analytics
 - fund release and proof recording with blockchain tx hashes
+- project completion update flow (government)
 - proof uploads to IPFS with integrity validation
 - explainable local ML risk scoring (`local-ml-risk-v2`)
 - redesigned frontend dashboard UI/UX (cards, gradients, sorting/search, better loading/error states)
 
 Important:
 - backend can run with real integrations (Pinata + Amoy) or fallback mock mode when keys are missing
+
 
 ## 2. Tech Stack
 
@@ -107,6 +109,7 @@ Projects:
 - `GET /api/projects/:id/risk` (public explainable risk snapshot)
 - `POST /api/projects` (government)
 - `POST /api/projects/:id/release-funds` (government)
+- `PATCH /api/projects/:id/completion` (government)
 - `POST /api/projects/:id/proofs` (contractor)
 - `POST /api/projects/:id/analyze` (government manual trigger)
 
@@ -217,6 +220,7 @@ Implemented frontend improvements:
 - modern analytics-style visual language
 - card-first layout with soft shadows and rounded containers
 - risk/status badges and dual progress bars
+- completion management controls (Update Completion modal + Mark 100% Complete action)
 - searchable/sortable fund release table
 - enhanced skeleton states and error banners
 - responsive desktop/tablet behavior

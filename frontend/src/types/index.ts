@@ -50,9 +50,60 @@ export interface Project {
   };
   transactions?: Transaction[];
   proofs?: Proof[];
+  milestones?: Milestone[];
+  releaseRequests?: FundReleaseRequest[];
   _count?: {
     proofs: number;
   };
+}
+
+export interface Milestone {
+  id: string;
+  projectId: string;
+  name: string;
+  escrowAmount: number;
+  requiredProofCount: number;
+  requiredCompletionPercentage: number;
+  status: 'pending' | 'approved' | 'completed';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FundReleaseRequest {
+  id: string;
+  projectId: string;
+  milestoneId: string | null;
+  amount: number;
+  purpose: string;
+  status: 'pending_checker' | 'pending_approver' | 'rejected' | 'executed';
+  makerId: string;
+  checkerId: string | null;
+  approverId: string | null;
+  rejectionReason: string | null;
+  blockchainTxHash: string | null;
+  createdAt: string;
+  updatedAt: string;
+  maker?: { id: string; email: string; displayName: string };
+  checker?: { id: string; email: string; displayName: string } | null;
+  approver?: { id: string; email: string; displayName: string } | null;
+  milestone?: { id: string; name: string; status: string } | null;
+}
+
+export interface AuditLog {
+  id: string;
+  actorId: string | null;
+  projectId: string | null;
+  action: string;
+  entityType: string;
+  entityId: string;
+  metadata: string | null;
+  createdAt: string;
+  actor?: {
+    id: string;
+    email: string;
+    displayName: string;
+    role: UserRole;
+  } | null;
 }
 
 /* ─── Transaction (fund release) ─── */
@@ -176,6 +227,18 @@ export interface ReleaseFundInput {
   amount: number;
   purpose: string;
   releaseDate: string;
+  milestoneId?: string;
+}
+
+export interface CreateMilestoneInput {
+  name: string;
+  escrowAmount: number;
+  requiredProofCount: number;
+  requiredCompletionPercentage: number;
+}
+
+export interface CompletionUpdateInput {
+  completionPercentage: number;
 }
 
 export interface UploadProofInput {

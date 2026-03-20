@@ -20,6 +20,9 @@ router.post('/login', async (req: Request, res: Response) => {
       'gov@demo': 'gov@demo.com',
       'build@demo': 'build@demo.com',
       'citizen@demo': 'citizen@demo.com',
+      'gov@gmail.com': 'gov@demo.com',
+      'buil@gmail.com': 'build@demo.com',
+      'build@gmail.com': 'build@demo.com',
     };
 
     const loginEmail = demoAliases[normalizedEmail] || normalizedEmail;

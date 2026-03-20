@@ -29,6 +29,30 @@ const sendError = (
   });
 };
 
+const logAudit = async (params: {
+  actorId?: string;
+  projectId?: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  metadata?: unknown;
+}) => {
+  try {
+    await prisma.auditLog.create({
+      data: {
+        actorId: params.actorId,
+        projectId: params.projectId,
+        action: params.action,
+        entityType: params.entityType,
+        entityId: params.entityId,
+        metadata: params.metadata ? JSON.stringify(params.metadata) : null,
+      },
+    });
+  } catch (error) {
+    console.warn('Audit log write failed:', error);
+  }
+};
+
 const hasJpegSignature = (buffer: Buffer) =>
   buffer.length >= 4 &&
   buffer[0] === 0xff &&
@@ -385,6 +409,15 @@ router.post('/:id/proofs', requireAuth, requireRole(['contractor']), upload.sing
     // 4. Trigger Async AI Analysis (do not await)
     aiService.analyzeProofAsync(proof.id, id, String(descString)).catch(console.error);
 
+    await logAudit({
+      actorId: req.user!.userId,
+      projectId: id,
+      action: 'proof_uploaded',
+      entityType: 'proof',
+      entityId: proof.id,
+      metadata: { ipfsHash, blockchainTxHash: proofBlockchainTxHash },
+    });
+
     res.status(201).json({
       success: true,
       data: {
@@ -408,7 +441,7 @@ router.post('/:id/proofs', requireAuth, requireRole(['contractor']), upload.sing
 router.post('/:id/release-funds', requireAuth, requireRole(['government']), async (req: AuthRequest, res: Response) => {
   try {
     const id = req.params.id as string;
-    const { amount, purpose } = req.body;
+    const { amount, purpose, milestoneId } = req.body as { amount: number; purpose: string; milestoneId?: string };
     const amountPaise = Number(amount);
 
     const fieldErrors: Record<string, string> = {};
@@ -440,46 +473,97 @@ router.post('/:id/release-funds', requireAuth, requireRole(['government']), asyn
       );
     }
 
-    const onChainProjectId = getOnChainProjectId({
-      blockchainProjectId: project.blockchainProjectId,
-      projectId: project.projectId,
+    const milestones = await prisma.milestone.findMany({
+      where: { projectId: id },
+      select: { id: true },
     });
-    if (!onChainProjectId) {
-      return sendError(res, 400, 'Project is not linked to blockchain ID', 'PROJECT_ONCHAIN_ID_MISSING');
+
+    if (milestones.length > 0 && !milestoneId) {
+      return sendError(
+        res,
+        400,
+        'Milestone is required for fund release once escrow milestones exist',
+        'MILESTONE_REQUIRED_FOR_RELEASE',
+        { milestoneId: 'Select a milestone before creating a release request' }
+      );
     }
 
-    // 1. Execute blockchain transaction
-    const txHash = await blockchainService.executeFundRelease(onChainProjectId, amountPaise);
+    let resolvedMilestoneId: string | null = null;
+    if (milestoneId) {
+      const milestone = await prisma.milestone.findUnique({ where: { id: String(milestoneId) } });
+      if (!milestone || milestone.projectId !== id) {
+        return sendError(res, 404, 'Milestone not found for this project', 'MILESTONE_NOT_FOUND');
+      }
 
-    // 2. Update DB transaction log and project totals
-    const [transaction, updatedProject] = await prisma.$transaction([
-      prisma.transaction.create({
-        data: {
-          projectId: id,
-          amount: Math.round(amountPaise),
-          purpose: String(purpose).trim(),
-          releaseDate: new Date(),
-          blockchainTxHash: txHash,
-          status: 'confirmed'
-        }
-      }),
-      prisma.project.update({
-        where: { id },
-        data: {
-          fundsReleased: { increment: amountPaise }
-        }
-      })
-    ]);
+      const proofCount = await prisma.proof.count({ where: { projectId: id } });
+      const completion = project.completionPercentage;
+      if (completion < milestone.requiredCompletionPercentage || proofCount < milestone.requiredProofCount) {
+        return sendError(
+          res,
+          400,
+          'Milestone evidence requirements are not met yet',
+          'MILESTONE_EVIDENCE_NOT_MET',
+          {
+            completionPercentage: `Requires >= ${milestone.requiredCompletionPercentage}%`,
+            proofCount: `Requires >= ${milestone.requiredProofCount} proof(s)`,
+          }
+        );
+      }
 
-    // Trigger AI risk refresh in background after a new fund release.
-    aiService.analyzeProject(id).catch(console.error);
+      const executedForMilestone = await prisma.fundReleaseRequest.aggregate({
+        where: { milestoneId: milestone.id, status: 'executed' },
+        _sum: { amount: true },
+      });
+      const alreadyReleased = executedForMilestone._sum.amount || 0;
+      const remainingMilestoneEscrow = milestone.escrowAmount - alreadyReleased;
+      if (amountPaise > remainingMilestoneEscrow) {
+        return sendError(
+          res,
+          400,
+          'Amount exceeds milestone escrow remaining',
+          'MILESTONE_ESCROW_EXCEEDED',
+          { amount: `Milestone remaining escrow is ${remainingMilestoneEscrow} paise` }
+        );
+      }
+
+      if (milestone.status === 'pending') {
+        await prisma.milestone.update({ where: { id: milestone.id }, data: { status: 'approved' } });
+      }
+
+      resolvedMilestoneId = milestone.id;
+    }
+
+    const requestRow = await prisma.fundReleaseRequest.create({
+      data: {
+        projectId: id,
+        milestoneId: resolvedMilestoneId,
+        amount: Math.round(amountPaise),
+        purpose: String(purpose).trim(),
+        makerId: req.user!.userId,
+        status: 'pending_checker',
+      },
+      include: {
+        maker: { select: { id: true, email: true, displayName: true } },
+        milestone: { select: { id: true, name: true, status: true } },
+      },
+    });
+
+    await logAudit({
+      actorId: req.user!.userId,
+      projectId: id,
+      action: 'release_request_created',
+      entityType: 'fund_release_request',
+      entityId: requestRow.id,
+      metadata: { amountPaise, milestoneId: resolvedMilestoneId },
+    });
 
     res.status(200).json({ 
       success: true, 
       data: { 
-        transaction, 
-        project: updatedProject 
-      } 
+        request: requestRow,
+        project,
+      },
+      message: 'Release request submitted for checker approval',
     });
   } catch (error) {
     console.error('Release funds error:', error);
@@ -488,6 +572,421 @@ router.post('/:id/release-funds', requireAuth, requireRole(['government']), asyn
       error: {
         message: error instanceof Error ? error.message : 'Failed to release funds on blockchain',
         code: 'FUND_RELEASE_FAILED',
+      },
+    });
+  }
+});
+
+// Milestone creation (Government only)
+router.post('/:id/milestones', requireAuth, requireRole(['government']), async (req: AuthRequest, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const {
+      name,
+      escrowAmount,
+      requiredProofCount,
+      requiredCompletionPercentage,
+    } = req.body as {
+      name?: string;
+      escrowAmount?: number;
+      requiredProofCount?: number;
+      requiredCompletionPercentage?: number;
+    };
+
+    const project = await prisma.project.findUnique({ where: { id }, select: { id: true } });
+    if (!project) {
+      return sendError(res, 404, 'Project not found', 'PROJECT_NOT_FOUND');
+    }
+
+    const fieldErrors: Record<string, string> = {};
+    const amount = Number(escrowAmount);
+    const proofCount = Number(requiredProofCount ?? 0);
+    const completion = Number(requiredCompletionPercentage ?? 0);
+    if (!name || !String(name).trim()) fieldErrors.name = 'Milestone name is required';
+    if (!Number.isFinite(amount) || amount <= 0) fieldErrors.escrowAmount = 'Escrow amount must be positive';
+    if (!Number.isFinite(proofCount) || proofCount < 0) fieldErrors.requiredProofCount = 'Required proof count must be zero or more';
+    if (!Number.isFinite(completion) || completion < 0 || completion > 100) {
+      fieldErrors.requiredCompletionPercentage = 'Required completion must be between 0 and 100';
+    }
+
+    if (Object.keys(fieldErrors).length > 0) {
+      return sendError(res, 400, 'Validation failed for milestone', 'MILESTONE_VALIDATION_FAILED', fieldErrors);
+    }
+
+    const milestone = await prisma.milestone.create({
+      data: {
+        projectId: id,
+        name: String(name).trim(),
+        escrowAmount: Math.round(amount),
+        requiredProofCount: Math.round(proofCount),
+        requiredCompletionPercentage: Math.round(completion),
+      },
+    });
+
+    await logAudit({
+      actorId: req.user!.userId,
+      projectId: id,
+      action: 'milestone_created',
+      entityType: 'milestone',
+      entityId: milestone.id,
+      metadata: { escrowAmount: milestone.escrowAmount },
+    });
+
+    return res.status(201).json({ success: true, data: milestone });
+  } catch (error) {
+    console.error('Create milestone error:', error);
+    return res.status(500).json({
+      success: false,
+      error: { message: 'Failed to create milestone', code: 'MILESTONE_CREATE_FAILED' },
+    });
+  }
+});
+
+// Milestone listing (Public)
+router.get('/:id/milestones', async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const milestones = await prisma.milestone.findMany({
+      where: { projectId: id },
+      orderBy: { createdAt: 'asc' },
+    });
+    return res.json({ success: true, data: milestones });
+  } catch (error) {
+    console.error('List milestones error:', error);
+    return res.status(500).json({ success: false, error: { message: 'Failed to fetch milestones' } });
+  }
+});
+
+// Release request listing (Government only)
+router.get('/:id/release-requests', requireAuth, requireRole(['government']), async (req: AuthRequest, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const requests = await prisma.fundReleaseRequest.findMany({
+      where: { projectId: id },
+      include: {
+        maker: { select: { id: true, displayName: true, email: true } },
+        checker: { select: { id: true, displayName: true, email: true } },
+        approver: { select: { id: true, displayName: true, email: true } },
+        milestone: { select: { id: true, name: true, status: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return res.json({ success: true, data: requests });
+  } catch (error) {
+    console.error('List release requests error:', error);
+    return res.status(500).json({ success: false, error: { message: 'Failed to fetch release requests' } });
+  }
+});
+
+// Review release request (Government checker/approver)
+router.patch('/:id/release-requests/:requestId/review', requireAuth, requireRole(['government']), async (req: AuthRequest, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const requestId = req.params.requestId as string;
+    const { action, reason } = req.body as { action?: 'approve' | 'reject'; reason?: string };
+
+    if (!action || !['approve', 'reject'].includes(action)) {
+      return sendError(res, 400, 'Invalid review action', 'REVIEW_ACTION_INVALID', {
+        action: 'Action must be approve or reject',
+      });
+    }
+
+    const requestRow = await prisma.fundReleaseRequest.findUnique({
+      where: { id: requestId },
+      include: { project: true, milestone: true },
+    });
+
+    if (!requestRow || requestRow.projectId !== id) {
+      return sendError(res, 404, 'Release request not found', 'RELEASE_REQUEST_NOT_FOUND');
+    }
+
+    if (requestRow.status === 'executed' || requestRow.status === 'rejected') {
+      return sendError(res, 400, 'Release request already closed', 'RELEASE_REQUEST_ALREADY_CLOSED');
+    }
+
+    const actorId = req.user!.userId;
+
+    if (action === 'reject') {
+      const rejected = await prisma.fundReleaseRequest.update({
+        where: { id: requestRow.id },
+        data: {
+          status: 'rejected',
+          rejectionReason: reason ? String(reason).trim() : 'Rejected by reviewer',
+        },
+      });
+
+      await logAudit({
+        actorId,
+        projectId: id,
+        action: 'release_request_rejected',
+        entityType: 'fund_release_request',
+        entityId: requestRow.id,
+        metadata: { reason: rejected.rejectionReason },
+      });
+
+      return res.json({ success: true, data: rejected });
+    }
+
+    const govUsers = await prisma.user.count({ where: { role: 'government' } });
+    const strictSplit = govUsers > 1;
+
+    if (requestRow.status === 'pending_checker') {
+      if (strictSplit && requestRow.makerId === actorId) {
+        return sendError(res, 400, 'Maker cannot act as checker when multiple government users exist', 'CHECKER_ROLE_CONFLICT');
+      }
+
+      const checked = await prisma.fundReleaseRequest.update({
+        where: { id: requestRow.id },
+        data: {
+          status: 'pending_approver',
+          checkerId: actorId,
+        },
+      });
+
+      await logAudit({
+        actorId,
+        projectId: id,
+        action: 'release_request_checked',
+        entityType: 'fund_release_request',
+        entityId: requestRow.id,
+      });
+
+      return res.json({ success: true, data: checked, message: 'Request moved to approver stage' });
+    }
+
+    if (requestRow.status === 'pending_approver') {
+      if (strictSplit && (requestRow.makerId === actorId || requestRow.checkerId === actorId)) {
+        return sendError(res, 400, 'Approver must be a different user from maker/checker', 'APPROVER_ROLE_CONFLICT');
+      }
+
+      if (requestRow.project.fundsReleased + requestRow.amount > requestRow.project.totalBudget) {
+        return sendError(
+          res,
+          400,
+          'Release amount exceeds remaining budget',
+          'INSUFFICIENT_REMAINING_BUDGET',
+          { amount: `Remaining budget is ${requestRow.project.totalBudget - requestRow.project.fundsReleased} paise` }
+        );
+      }
+
+      const onChainProjectId = getOnChainProjectId({
+        blockchainProjectId: requestRow.project.blockchainProjectId,
+        projectId: requestRow.project.projectId,
+      });
+      if (!onChainProjectId) {
+        return sendError(res, 400, 'Project is not linked to blockchain ID', 'PROJECT_ONCHAIN_ID_MISSING');
+      }
+
+      const txHash = await blockchainService.executeFundRelease(onChainProjectId, requestRow.amount);
+
+      const [transaction, updatedProject, executedRequest] = await prisma.$transaction([
+        prisma.transaction.create({
+          data: {
+            projectId: requestRow.projectId,
+            amount: requestRow.amount,
+            purpose: requestRow.purpose,
+            releaseDate: new Date(),
+            blockchainTxHash: txHash,
+            status: 'confirmed',
+          },
+        }),
+        prisma.project.update({
+          where: { id: requestRow.projectId },
+          data: { fundsReleased: { increment: requestRow.amount } },
+        }),
+        prisma.fundReleaseRequest.update({
+          where: { id: requestRow.id },
+          data: {
+            status: 'executed',
+            approverId: actorId,
+            blockchainTxHash: txHash,
+          },
+        }),
+      ]);
+
+      await prisma.fundReleaseRequest.update({
+        where: { id: executedRequest.id },
+        data: { transactionId: transaction.id },
+      });
+
+      if (requestRow.milestoneId) {
+        const sums = await prisma.fundReleaseRequest.aggregate({
+          where: { milestoneId: requestRow.milestoneId, status: 'executed' },
+          _sum: { amount: true },
+        });
+        const milestone = await prisma.milestone.findUnique({ where: { id: requestRow.milestoneId } });
+        if (milestone && (sums._sum.amount || 0) >= milestone.escrowAmount) {
+          await prisma.milestone.update({ where: { id: milestone.id }, data: { status: 'completed' } });
+        }
+      }
+
+      await logAudit({
+        actorId,
+        projectId: id,
+        action: 'release_request_executed',
+        entityType: 'fund_release_request',
+        entityId: requestRow.id,
+        metadata: { txHash, amount: requestRow.amount },
+      });
+
+      aiService.analyzeProject(requestRow.projectId).catch(console.error);
+
+      return res.json({
+        success: true,
+        data: {
+          request: { ...executedRequest, transactionId: transaction.id },
+          transaction,
+          project: updatedProject,
+        },
+      });
+    }
+
+    return sendError(res, 400, 'Unsupported release request state', 'RELEASE_REQUEST_STATE_INVALID');
+  } catch (error) {
+    console.error('Review release request error:', error);
+    return res.status(500).json({
+      success: false,
+      error: { message: 'Failed to review release request', code: 'RELEASE_REQUEST_REVIEW_FAILED' },
+    });
+  }
+});
+
+// Audit logs for project (Government only)
+router.get('/:id/audit-logs', requireAuth, requireRole(['government']), async (req: AuthRequest, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const logs = await prisma.auditLog.findMany({
+      where: { projectId: id },
+      include: {
+        actor: {
+          select: { id: true, email: true, displayName: true, role: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+    return res.json({ success: true, data: logs });
+  } catch (error) {
+    console.error('Fetch audit logs error:', error);
+    return res.status(500).json({ success: false, error: { message: 'Failed to fetch audit logs' } });
+  }
+});
+
+// Update completion percentage (Government only)
+router.patch('/:id/completion', requireAuth, requireRole(['government']), async (req: AuthRequest, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const { completionPercentage } = req.body as { completionPercentage?: number };
+
+    const parsedCompletion = Number(completionPercentage);
+    const fieldErrors: Record<string, string> = {};
+    if (!Number.isFinite(parsedCompletion)) {
+      fieldErrors.completionPercentage = 'Completion percentage must be a valid number';
+    } else if (parsedCompletion < 0 || parsedCompletion > 100) {
+      fieldErrors.completionPercentage = 'Completion percentage must be between 0 and 100';
+    }
+
+    if (Object.keys(fieldErrors).length > 0) {
+      return sendError(
+        res,
+        400,
+        'Validation failed for completion update',
+        'COMPLETION_UPDATE_VALIDATION_FAILED',
+        fieldErrors
+      );
+    }
+
+    const project = await prisma.project.findUnique({ where: { id } });
+    if (!project) {
+      return sendError(res, 404, 'Project not found', 'PROJECT_NOT_FOUND');
+    }
+
+    let status = project.status;
+    if (parsedCompletion === 100 && project.status === 'active') {
+      status = 'completed';
+    } else if (parsedCompletion < 100 && project.status === 'completed') {
+      status = 'active';
+    }
+
+    const updatedProject = await prisma.project.update({
+      where: { id },
+      data: {
+        completionPercentage: Math.round(parsedCompletion),
+        status,
+      },
+    });
+
+    // Refresh risk model after progress change.
+    aiService.analyzeProject(id).catch(console.error);
+
+    await logAudit({
+      actorId: req.user!.userId,
+      projectId: id,
+      action: 'completion_updated',
+      entityType: 'project',
+      entityId: id,
+      metadata: { completionPercentage: updatedProject.completionPercentage, status: updatedProject.status },
+    });
+
+    return res.status(200).json({ success: true, data: updatedProject });
+  } catch (error) {
+    console.error('Update completion error:', error);
+    return res.status(500).json({
+      success: false,
+      error: {
+        message: error instanceof Error ? error.message : 'Failed to update project completion',
+        code: 'COMPLETION_UPDATE_FAILED',
+      },
+    });
+  }
+});
+
+// Delete project (Government only)
+router.delete('/:id', requireAuth, requireRole(['government']), async (req: AuthRequest, res: Response) => {
+  try {
+    const id = req.params.id as string;
+
+    const project = await prisma.project.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        projectId: true,
+        name: true,
+      },
+    });
+
+    if (!project) {
+      return sendError(res, 404, 'Project not found', 'PROJECT_NOT_FOUND');
+    }
+
+    await logAudit({
+      actorId: req.user!.userId,
+      projectId: id,
+      action: 'project_deleted',
+      entityType: 'project',
+      entityId: id,
+      metadata: { projectId: project.projectId, name: project.name },
+    });
+
+    await prisma.project.delete({ where: { id } });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: project.id,
+        projectId: project.projectId,
+        name: project.name,
+        deleted: true,
+      },
+      message: 'Project deleted successfully',
+    });
+  } catch (error) {
+    console.error('Delete project error:', error);
+    return res.status(500).json({
+      success: false,
+      error: {
+        message: error instanceof Error ? error.message : 'Failed to delete project',
+        code: 'PROJECT_DELETE_FAILED',
       },
     });
   }
@@ -503,6 +1002,14 @@ router.post('/:id/analyze', requireAuth, requireRole(['government']), async (req
     }
 
     const analysis = await aiService.analyzeProject(id);
+    await logAudit({
+      actorId: req.user!.userId,
+      projectId: id,
+      action: 'risk_review_triggered',
+      entityType: 'analysis',
+      entityId: id,
+      metadata: { provider: analysis.analysis.provider, riskScore: analysis.analysis.riskScore },
+    });
     return res.json({ success: true, data: analysis });
   } catch (error) {
     console.error('Manual analysis trigger failed:', error);

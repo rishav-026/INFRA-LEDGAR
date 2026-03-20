@@ -23,7 +23,6 @@ export function FilterBar({ onSearch, onStatusFilter, currentStatus }: FilterBar
     { value: 'active', label: 'Active' },
     { value: 'completed', label: 'Completed' },
     { value: 'flagged', label: 'Flagged' },
-    { value: 'archived', label: 'Archived' },
   ];
 
   return (

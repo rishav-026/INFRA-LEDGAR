@@ -96,8 +96,8 @@ const runLocalRiskModel = (input: ModelInput) => {
   if (input.completionPct >= input.fundsReleasedPct) linearScore -= 0.08;
   if (input.proofCount >= 4 && input.budgetProgressGapPct <= 10) linearScore -= 0.05;
 
-  const riskScore = Number(clamp(sigmoid((linearScore - 0.45) * 5), 0.02, 0.98).toFixed(4));
-  const riskLevel = riskScore >= 0.7 ? 'high' : riskScore >= 0.4 ? 'medium' : 'normal';
+  const riskScore = Number((clamp(sigmoid((linearScore - 0.45) * 5), 0.02, 0.98) * 100).toFixed(2));
+  const riskLevel = riskScore >= 70 ? 'high' : riskScore >= 40 ? 'medium' : 'normal';
 
   const flaggedAnomalies: string[] = [];
   if (input.budgetProgressGapPct >= 25) {

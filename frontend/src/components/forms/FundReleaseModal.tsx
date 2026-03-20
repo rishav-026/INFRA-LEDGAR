@@ -63,6 +63,8 @@ export function FundReleaseModal({ project, isOpen, onClose, onSubmit }: FundRel
       if (err instanceof ApiError) {
         setFieldErrors(err.fieldErrors || {});
         setError(err.message);
+      } else if (err instanceof Error) {
+        setError(err.message);
       } else {
         setError('Transaction failed. Please try again.');
       }

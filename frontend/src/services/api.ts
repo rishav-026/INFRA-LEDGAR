@@ -1,8 +1,9 @@
 import { apiClient, setGlobalAuthToken } from './apiClient';
 import axios from 'axios';
 import type { 
-  Project, User, Transaction, Proof, DashboardAnalytics, ActivityItem, 
-  ApiResponse, CreateProjectInput, ReleaseFundInput, Analysis
+  Project, User, Transaction, Proof, DashboardAnalytics, ActivityItem,
+  FundReleaseRequest, Milestone, AuditLog,
+  ApiResponse, CreateProjectInput, ReleaseFundInput, CompletionUpdateInput, CreateMilestoneInput, Analysis
 } from '../types';
 
 export class ApiError extends Error {
@@ -106,6 +107,50 @@ const toProof = (proof: Partial<Proof>): Proof => ({
   uploaderId: proof.uploaderId || '',
   blockchainTxHash: proof.blockchainTxHash || '',
   createdAt: proof.createdAt || new Date().toISOString(),
+});
+
+const toMilestone = (milestone: Partial<Milestone>): Milestone => ({
+  id: milestone.id || '',
+  projectId: milestone.projectId || '',
+  name: milestone.name || '',
+  escrowAmount: milestone.escrowAmount || 0,
+  requiredProofCount: milestone.requiredProofCount || 0,
+  requiredCompletionPercentage: milestone.requiredCompletionPercentage || 0,
+  status: (milestone.status as Milestone['status']) || 'pending',
+  createdAt: milestone.createdAt || new Date().toISOString(),
+  updatedAt: milestone.updatedAt || new Date().toISOString(),
+});
+
+const toReleaseRequest = (request: Partial<FundReleaseRequest>): FundReleaseRequest => ({
+  id: request.id || '',
+  projectId: request.projectId || '',
+  milestoneId: request.milestoneId ?? null,
+  amount: request.amount || 0,
+  purpose: request.purpose || '',
+  status: (request.status as FundReleaseRequest['status']) || 'pending_checker',
+  makerId: request.makerId || '',
+  checkerId: request.checkerId ?? null,
+  approverId: request.approverId ?? null,
+  rejectionReason: request.rejectionReason ?? null,
+  blockchainTxHash: request.blockchainTxHash ?? null,
+  createdAt: request.createdAt || new Date().toISOString(),
+  updatedAt: request.updatedAt || new Date().toISOString(),
+  maker: request.maker,
+  checker: request.checker,
+  approver: request.approver,
+  milestone: request.milestone,
+});
+
+const toAuditLog = (log: Partial<AuditLog>): AuditLog => ({
+  id: log.id || '',
+  actorId: log.actorId ?? null,
+  projectId: log.projectId ?? null,
+  action: log.action || '',
+  entityType: log.entityType || '',
+  entityId: log.entityId || '',
+  metadata: log.metadata ?? null,
+  createdAt: log.createdAt || new Date().toISOString(),
+  actor: log.actor ?? null,
 });
 
 const toProject = (project: BackendProject): Project => ({
@@ -221,14 +266,86 @@ export const uploadProof = async (projectId: string, files: File[], description:
 
 export const releaseFunds = async (projectId: string, data: ReleaseFundInput) => {
   try {
-    const res = await apiClient.post<ApiResponse<{ transaction: Transaction; project: Project }>>(
+    const res = await apiClient.post<ApiResponse<{ request: FundReleaseRequest; project: Project }>>(
       `/projects/${projectId}/release-funds`,
       data
     );
     return {
-      transaction: toTransaction(res.data.data.transaction),
+      request: toReleaseRequest(res.data.data.request),
       project: toProject(res.data.data.project as BackendProject),
     };
+  } catch (error) {
+    throw toApiError(error);
+  }
+};
+
+export const getMilestones = async (projectId: string) => {
+  const res = await apiClient.get<ApiResponse<Milestone[]>>(`/projects/${projectId}/milestones`);
+  return res.data.data.map((m) => toMilestone(m));
+};
+
+export const createMilestone = async (projectId: string, data: CreateMilestoneInput) => {
+  try {
+    const res = await apiClient.post<ApiResponse<Milestone>>(`/projects/${projectId}/milestones`, data);
+    return toMilestone(res.data.data);
+  } catch (error) {
+    throw toApiError(error);
+  }
+};
+
+export const getReleaseRequests = async (projectId: string) => {
+  const res = await apiClient.get<ApiResponse<FundReleaseRequest[]>>(`/projects/${projectId}/release-requests`);
+  return res.data.data.map((r) => toReleaseRequest(r));
+};
+
+export const reviewReleaseRequest = async (
+  projectId: string,
+  requestId: string,
+  action: 'approve' | 'reject',
+  reason?: string
+) => {
+  try {
+    const res = await apiClient.patch<ApiResponse<FundReleaseRequest | { request: FundReleaseRequest; transaction: Transaction; project: Project }>>(
+      `/projects/${projectId}/release-requests/${requestId}/review`,
+      { action, reason }
+    );
+
+    const payload = res.data.data;
+    if ('request' in (payload as Record<string, unknown>)) {
+      const rich = payload as { request: FundReleaseRequest; transaction: Transaction; project: Project };
+      return {
+        request: toReleaseRequest(rich.request),
+        transaction: toTransaction(rich.transaction),
+        project: toProject(rich.project as BackendProject),
+      };
+    }
+
+    return { request: toReleaseRequest(payload as FundReleaseRequest) };
+  } catch (error) {
+    throw toApiError(error);
+  }
+};
+
+export const getProjectAuditLogs = async (projectId: string) => {
+  const res = await apiClient.get<ApiResponse<AuditLog[]>>(`/projects/${projectId}/audit-logs`);
+  return res.data.data.map((log) => toAuditLog(log));
+};
+
+export const updateProjectCompletion = async (projectId: string, data: CompletionUpdateInput) => {
+  try {
+    const res = await apiClient.patch<ApiResponse<Project>>(`/projects/${projectId}/completion`, data);
+    return toProject(res.data.data as BackendProject);
+  } catch (error) {
+    throw toApiError(error);
+  }
+};
+
+export const deleteProject = async (projectId: string) => {
+  try {
+    const res = await apiClient.delete<ApiResponse<{ id: string; projectId: string; name: string; deleted: boolean }>>(
+      `/projects/${projectId}`
+    );
+    return res.data.data;
   } catch (error) {
     throw toApiError(error);
   }

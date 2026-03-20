@@ -17,6 +17,10 @@ model User {
 
   // Relations
   projects     Project[] // Projects assigned to the contractor
+  auditLogs    AuditLog[]
+  madeReleaseRequests      FundReleaseRequest[] @relation("ReleaseRequestMaker")
+  checkedReleaseRequests   FundReleaseRequest[] @relation("ReleaseRequestChecker")
+  approvedReleaseRequests  FundReleaseRequest[] @relation("ReleaseRequestApprover")
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -44,6 +48,9 @@ model Project {
   contractor           User          @relation(fields: [contractorId], references: [id])
   transactions         Transaction[]
   proofs               Proof[]
+  milestones           Milestone[]
+  releaseRequests      FundReleaseRequest[]
+  auditLogs            AuditLog[]
 
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
@@ -60,6 +67,7 @@ model Transaction {
 
   // Relations
   project            Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  releaseRequest     FundReleaseRequest?
 
   createdAt          DateTime @default(now())
 }
@@ -78,6 +86,64 @@ model Proof {
 
   // Relations
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+}
+
+model Milestone {
+  id                          String   @id @default(uuid())
+  projectId                   String
+  name                        String
+  escrowAmount                Int
+  requiredProofCount          Int      @default(0)
+  requiredCompletionPercentage Int     @default(0)
+  status                      String   @default("pending") // pending, approved, completed
+
+  project                     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  releaseRequests             FundReleaseRequest[]
+
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+}
+
+model FundReleaseRequest {
+  id             String   @id @default(uuid())
+  projectId      String
+  milestoneId    String?
+  amount         Int
+  purpose        String
+  status         String   @default("pending_checker") // pending_checker, pending_approver, rejected, executed
+
+  makerId        String
+  checkerId      String?
+  approverId     String?
+  rejectionReason String?
+
+  blockchainTxHash String?
+  transactionId    String? @unique
+
+  project        Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestone      Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  maker          User      @relation("ReleaseRequestMaker", fields: [makerId], references: [id])
+  checker        User?     @relation("ReleaseRequestChecker", fields: [checkerId], references: [id])
+  approver       User?     @relation("ReleaseRequestApprover", fields: [approverId], references: [id])
+  transaction    Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorId     String?
+  projectId   String?
+  action      String
+  entityType  String
+  entityId    String
+  metadata    String?
+
+  actor       User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   createdAt   DateTime @default(now())
 }

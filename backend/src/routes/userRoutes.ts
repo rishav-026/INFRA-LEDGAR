@@ -48,6 +48,16 @@ router.put('/:id/role', requireAuth, requireRole(['government']), async (req: Au
       select: { id: true, email: true, role: true }
     });
 
+    await prisma.auditLog.create({
+      data: {
+        actorId: req.user!.userId,
+        action: 'role_updated',
+        entityType: 'user',
+        entityId: id,
+        metadata: JSON.stringify({ role }),
+      },
+    });
+
     res.json({ success: true, data: updatedUser });
   } catch (error) {
     console.error('Update role error:', error);

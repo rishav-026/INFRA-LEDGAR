@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { Link } from 'react-router-dom';
+import { Eye, EyeOff, Lock, User } from 'lucide-react';
 
 interface LoginFormProps {
   onSubmit: (email: string, password: string) => Promise<void>;
@@ -25,57 +26,60 @@ export function LoginForm({ onSubmit, error }: LoginFormProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      <Input
-        label="Email"
-        type="email"
-        required
-        autoFocus
-        placeholder="gov@demo.com"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-      />
+    <form onSubmit={handleSubmit} className="space-y-3.5">
+      <div className="relative">
+        <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+        <Input
+          type="text"
+          required
+          autoFocus
+          placeholder="Username"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="h-9 pl-9 rounded-md border-white/10 bg-[#332d47] text-slate-100 placeholder:text-slate-500"
+        />
+      </div>
 
       <div className="relative">
+        <Lock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
         <Input
-          label="Password"
           type={showPassword ? 'text' : 'password'}
           required
-          placeholder="demo123"
+          placeholder="Your password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           minLength={6}
+          className="h-9 pl-9 pr-10 rounded-md border-white/10 bg-[#332d47] text-slate-100 placeholder:text-slate-500"
         />
         <button
           type="button"
           onClick={() => setShowPassword(!showPassword)}
-          className="absolute right-3 top-8 text-xs text-text-muted hover:text-text-primary cursor-pointer"
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 cursor-pointer"
         >
-          {showPassword ? 'Hide' : 'Show'}
+          {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
         </button>
       </div>
 
-      {error && (
-        <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
-      )}
-
-      <Button type="submit" loading={loading} className="w-full">
-        Sign In
-      </Button>
-
-      <div className="text-center">
-        <Link to="/" className="text-sm text-brand-600 hover:underline">
-          View public dashboard →
-        </Link>
+      <div className="flex justify-end text-[10px] text-slate-400">
+        <button type="button" className="hover:text-slate-200 cursor-pointer">Forgot?</button>
       </div>
 
-      {/* Demo credentials hint */}
-      <div className="bg-surface-secondary rounded-lg p-3 mt-4">
-        <p className="text-xs text-text-muted font-medium mb-1.5">Demo Accounts:</p>
-        <div className="space-y-0.5 text-xs text-text-muted font-mono">
-          <p>gov@demo.com / demo123 (Government)</p>
-          <p>build@demo.com / demo123 (Contractor)</p>
-        </div>
+      {error && <p className="text-xs text-red-300 bg-red-950/40 border border-red-900/70 px-3 py-2 rounded-md">{error}</p>}
+
+      <Button
+        type="submit"
+        loading={loading}
+        className="w-full h-9 rounded-md bg-violet-500 hover:bg-violet-400 text-white text-xs"
+      >
+        Create account
+      </Button>
+
+      <div className="pt-1 text-center space-y-1.5">
+        <p className="text-[11px] text-slate-400">govt: Gov@gmail.com</p>
+        <p className="text-[11px] text-slate-400">contractor : Buil@gmail.com</p>
+        <Link to="/" className="text-[11px] text-violet-300 hover:underline">
+          Public dashboard
+        </Link>
       </div>
     </form>
   );
