@@ -53,6 +53,12 @@ const logAudit = async (params: {
   }
 };
 
+const toSafeJson = <T>(payload: T): T => {
+  return JSON.parse(
+    JSON.stringify(payload, (_key, value) => (typeof value === 'bigint' ? Number(value) : value))
+  ) as T;
+};
+
 const hasJpegSignature = (buffer: Buffer) =>
   buffer.length >= 4 &&
   buffer[0] === 0xff &&
@@ -159,7 +165,7 @@ router.get('/', async (req: Request, res: Response) => {
     res.json({
       success: true,
       data: {
-        items: projects,
+        items: toSafeJson(projects),
         total,
         page,
         limit,
@@ -195,7 +201,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: { message: 'Project not found' } });
     }
 
-    res.json({ success: true, data: project });
+    res.json({ success: true, data: toSafeJson(project) });
   } catch (error) {
     console.error('Fetch project detail error:', error);
     res.status(500).json({ success: false, error: { message: 'Failed to fetch project details' } });
@@ -212,7 +218,7 @@ router.get('/:id/risk', async (req: Request, res: Response) => {
     }
 
     const analysis = await aiService.analyzeProject(id);
-    return res.json({ success: true, data: analysis });
+    return res.json({ success: true, data: toSafeJson(analysis) });
   } catch (error) {
     console.error('Risk analysis fetch failed:', error);
     return res.status(500).json({
@@ -246,6 +252,8 @@ router.post('/', requireAuth, requireRole(['government']), async (req: AuthReque
     if (Object.keys(fieldErrors).length > 0) {
       return sendError(res, 400, 'Validation failed for project creation', 'PROJECT_VALIDATION_FAILED', fieldErrors);
     }
+
+    const parsedBudgetPaise = BigInt(Math.round(parsedBudget));
 
     const contractor = await prisma.user.findUnique({ where: { id: contractorId } });
     if (!contractor || contractor.role !== 'contractor') {
@@ -285,7 +293,7 @@ router.post('/', requireAuth, requireRole(['government']), async (req: AuthReque
         projectId,
         name: String(name).trim(),
         description,
-        totalBudget: Math.round(parsedBudget),
+        totalBudget: parsedBudgetPaise,
         location: String(location).trim(),
         startDate: parsedStartDate,
         endDate: parsedEndDate,
@@ -294,7 +302,7 @@ router.post('/', requireAuth, requireRole(['government']), async (req: AuthReque
       }
     });
 
-    res.status(201).json({ success: true, data: project });
+    res.status(201).json({ success: true, data: toSafeJson(project) });
   } catch (error) {
     console.error('Create project error:', error);
     res.status(500).json({
@@ -458,18 +466,20 @@ router.post('/:id/release-funds', requireAuth, requireRole(['government']), asyn
       return sendError(res, 400, 'Validation failed for fund release', 'FUND_RELEASE_VALIDATION_FAILED', fieldErrors);
     }
 
+    const amountPaiseBigInt = BigInt(Math.round(amountPaise));
+
     const project = await prisma.project.findUnique({ where: { id } });
     if (!project) {
       return sendError(res, 404, 'Project not found', 'PROJECT_NOT_FOUND');
     }
 
-    if (project.fundsReleased + amountPaise > project.totalBudget) {
+    if (project.fundsReleased + amountPaiseBigInt > project.totalBudget) {
       return sendError(
         res,
         400,
         'Release amount exceeds remaining budget',
         'INSUFFICIENT_REMAINING_BUDGET',
-        { amount: `Remaining budget is ${project.totalBudget - project.fundsReleased} paise` }
+        { amount: `Remaining budget is ${(project.totalBudget - project.fundsReleased).toString()} paise` }
       );
     }
 
@@ -514,15 +524,15 @@ router.post('/:id/release-funds', requireAuth, requireRole(['government']), asyn
         where: { milestoneId: milestone.id, status: 'executed' },
         _sum: { amount: true },
       });
-      const alreadyReleased = executedForMilestone._sum.amount || 0;
+      const alreadyReleased = executedForMilestone._sum.amount || 0n;
       const remainingMilestoneEscrow = milestone.escrowAmount - alreadyReleased;
-      if (amountPaise > remainingMilestoneEscrow) {
+      if (amountPaiseBigInt > remainingMilestoneEscrow) {
         return sendError(
           res,
           400,
           'Amount exceeds milestone escrow remaining',
           'MILESTONE_ESCROW_EXCEEDED',
-          { amount: `Milestone remaining escrow is ${remainingMilestoneEscrow} paise` }
+          { amount: `Milestone remaining escrow is ${remainingMilestoneEscrow.toString()} paise` }
         );
       }
 
@@ -537,7 +547,7 @@ router.post('/:id/release-funds', requireAuth, requireRole(['government']), asyn
       data: {
         projectId: id,
         milestoneId: resolvedMilestoneId,
-        amount: Math.round(amountPaise),
+        amount: amountPaiseBigInt,
         purpose: String(purpose).trim(),
         makerId: req.user!.userId,
         status: 'pending_checker',
@@ -554,14 +564,14 @@ router.post('/:id/release-funds', requireAuth, requireRole(['government']), asyn
       action: 'release_request_created',
       entityType: 'fund_release_request',
       entityId: requestRow.id,
-      metadata: { amountPaise, milestoneId: resolvedMilestoneId },
+      metadata: { amountPaise: amountPaiseBigInt.toString(), milestoneId: resolvedMilestoneId },
     });
 
     res.status(200).json({ 
       success: true, 
       data: { 
-        request: requestRow,
-        project,
+        request: toSafeJson(requestRow),
+        project: toSafeJson(project),
       },
       message: 'Release request submitted for checker approval',
     });
@@ -613,11 +623,13 @@ router.post('/:id/milestones', requireAuth, requireRole(['government']), async (
       return sendError(res, 400, 'Validation failed for milestone', 'MILESTONE_VALIDATION_FAILED', fieldErrors);
     }
 
+    const amountBigInt = BigInt(Math.round(amount));
+
     const milestone = await prisma.milestone.create({
       data: {
         projectId: id,
         name: String(name).trim(),
-        escrowAmount: Math.round(amount),
+        escrowAmount: amountBigInt,
         requiredProofCount: Math.round(proofCount),
         requiredCompletionPercentage: Math.round(completion),
       },
@@ -629,10 +641,10 @@ router.post('/:id/milestones', requireAuth, requireRole(['government']), async (
       action: 'milestone_created',
       entityType: 'milestone',
       entityId: milestone.id,
-      metadata: { escrowAmount: milestone.escrowAmount },
+      metadata: { escrowAmount: milestone.escrowAmount.toString() },
     });
 
-    return res.status(201).json({ success: true, data: milestone });
+    return res.status(201).json({ success: true, data: toSafeJson(milestone) });
   } catch (error) {
     console.error('Create milestone error:', error);
     return res.status(500).json({
@@ -650,7 +662,7 @@ router.get('/:id/milestones', async (req: Request, res: Response) => {
       where: { projectId: id },
       orderBy: { createdAt: 'asc' },
     });
-    return res.json({ success: true, data: milestones });
+    return res.json({ success: true, data: toSafeJson(milestones) });
   } catch (error) {
     console.error('List milestones error:', error);
     return res.status(500).json({ success: false, error: { message: 'Failed to fetch milestones' } });
@@ -671,7 +683,7 @@ router.get('/:id/release-requests', requireAuth, requireRole(['government']), as
       },
       orderBy: { createdAt: 'desc' },
     });
-    return res.json({ success: true, data: requests });
+    return res.json({ success: true, data: toSafeJson(requests) });
   } catch (error) {
     console.error('List release requests error:', error);
     return res.status(500).json({ success: false, error: { message: 'Failed to fetch release requests' } });
@@ -724,7 +736,7 @@ router.patch('/:id/release-requests/:requestId/review', requireAuth, requireRole
         metadata: { reason: rejected.rejectionReason },
       });
 
-      return res.json({ success: true, data: rejected });
+      return res.json({ success: true, data: toSafeJson(rejected) });
     }
 
     const govUsers = await prisma.user.count({ where: { role: 'government' } });
@@ -751,7 +763,7 @@ router.patch('/:id/release-requests/:requestId/review', requireAuth, requireRole
         entityId: requestRow.id,
       });
 
-      return res.json({ success: true, data: checked, message: 'Request moved to approver stage' });
+      return res.json({ success: true, data: toSafeJson(checked), message: 'Request moved to approver stage' });
     }
 
     if (requestRow.status === 'pending_approver') {
@@ -765,7 +777,7 @@ router.patch('/:id/release-requests/:requestId/review', requireAuth, requireRole
           400,
           'Release amount exceeds remaining budget',
           'INSUFFICIENT_REMAINING_BUDGET',
-          { amount: `Remaining budget is ${requestRow.project.totalBudget - requestRow.project.fundsReleased} paise` }
+          { amount: `Remaining budget is ${(requestRow.project.totalBudget - requestRow.project.fundsReleased).toString()} paise` }
         );
       }
 
@@ -777,7 +789,7 @@ router.patch('/:id/release-requests/:requestId/review', requireAuth, requireRole
         return sendError(res, 400, 'Project is not linked to blockchain ID', 'PROJECT_ONCHAIN_ID_MISSING');
       }
 
-      const txHash = await blockchainService.executeFundRelease(onChainProjectId, requestRow.amount);
+      const txHash = await blockchainService.executeFundRelease(onChainProjectId, Number(requestRow.amount));
 
       const [transaction, updatedProject, executedRequest] = await prisma.$transaction([
         prisma.transaction.create({
@@ -815,7 +827,7 @@ router.patch('/:id/release-requests/:requestId/review', requireAuth, requireRole
           _sum: { amount: true },
         });
         const milestone = await prisma.milestone.findUnique({ where: { id: requestRow.milestoneId } });
-        if (milestone && (sums._sum.amount || 0) >= milestone.escrowAmount) {
+        if (milestone && (sums._sum.amount || 0n) >= milestone.escrowAmount) {
           await prisma.milestone.update({ where: { id: milestone.id }, data: { status: 'completed' } });
         }
       }
@@ -826,7 +838,7 @@ router.patch('/:id/release-requests/:requestId/review', requireAuth, requireRole
         action: 'release_request_executed',
         entityType: 'fund_release_request',
         entityId: requestRow.id,
-        metadata: { txHash, amount: requestRow.amount },
+        metadata: { txHash, amount: requestRow.amount.toString() },
       });
 
       aiService.analyzeProject(requestRow.projectId).catch(console.error);
@@ -834,9 +846,9 @@ router.patch('/:id/release-requests/:requestId/review', requireAuth, requireRole
       return res.json({
         success: true,
         data: {
-          request: { ...executedRequest, transactionId: transaction.id },
-          transaction,
-          project: updatedProject,
+          request: toSafeJson({ ...executedRequest, transactionId: transaction.id }),
+          transaction: toSafeJson(transaction),
+          project: toSafeJson(updatedProject),
         },
       });
     }
@@ -865,7 +877,7 @@ router.get('/:id/audit-logs', requireAuth, requireRole(['government']), async (r
       orderBy: { createdAt: 'desc' },
       take: 200,
     });
-    return res.json({ success: true, data: logs });
+    return res.json({ success: true, data: toSafeJson(logs) });
   } catch (error) {
     console.error('Fetch audit logs error:', error);
     return res.status(500).json({ success: false, error: { message: 'Failed to fetch audit logs' } });
@@ -928,7 +940,7 @@ router.patch('/:id/completion', requireAuth, requireRole(['government']), async 
       metadata: { completionPercentage: updatedProject.completionPercentage, status: updatedProject.status },
     });
 
-    return res.status(200).json({ success: true, data: updatedProject });
+    return res.status(200).json({ success: true, data: toSafeJson(updatedProject) });
   } catch (error) {
     console.error('Update completion error:', error);
     return res.status(500).json({
@@ -1010,7 +1022,7 @@ router.post('/:id/analyze', requireAuth, requireRole(['government']), async (req
       entityId: id,
       metadata: { provider: analysis.analysis.provider, riskScore: analysis.analysis.riskScore },
     });
-    return res.json({ success: true, data: analysis });
+    return res.json({ success: true, data: toSafeJson(analysis) });
   } catch (error) {
     console.error('Manual analysis trigger failed:', error);
     return res.status(500).json({

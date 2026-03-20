@@ -3,6 +3,11 @@ import { prisma } from '../server';
 
 const router = Router();
 
+const toSafeNumber = (value: bigint | number | null | undefined) => {
+  if (typeof value === 'bigint') return Number(value);
+  return value || 0;
+};
+
 // Get high-level analytics (Public)
 router.get('/', async (req: Request, res: Response) => {
   try {
@@ -34,8 +39,8 @@ router.get('/', async (req: Request, res: Response) => {
       data: {
         totalProjects,
         activeProjects,
-        totalBudget: totalBudgetAgg._sum.totalBudget || 0,
-        totalFundsReleased: totalFundsReleasedAgg._sum.fundsReleased || 0,
+        totalBudget: toSafeNumber(totalBudgetAgg._sum.totalBudget),
+        totalFundsReleased: toSafeNumber(totalFundsReleasedAgg._sum.fundsReleased),
         flaggedProjects,
         totalProofsUploaded
       }

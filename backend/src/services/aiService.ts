@@ -164,7 +164,10 @@ export const aiService = {
       throw new Error('Project not found for AI analysis');
     }
 
-    const fundsReleasedPct = project.totalBudget > 0 ? project.fundsReleased / project.totalBudget : 0;
+    const totalBudgetPaise = Number(project.totalBudget);
+    const fundsReleasedPaise = Number(project.fundsReleased);
+
+    const fundsReleasedPct = totalBudgetPaise > 0 ? fundsReleasedPaise / totalBudgetPaise : 0;
     const completionPct = clamp(project.completionPercentage / 100, 0, 1);
     const budgetProgressGapPct = Number(
       clamp((fundsReleasedPct - completionPct) * 100, 0, 100).toFixed(2)
@@ -175,9 +178,9 @@ export const aiService = {
       Math.floor((Date.now() - new Date(project.startDate).getTime()) / 86400000)
     );
     const releaseFrequency = project.transactions.length / Math.max(daysElapsed / 7, 1);
-    const totalReleasedFromTx = project.transactions.reduce((acc, tx) => acc + (tx.amount || 0), 0);
-    const meanReleaseSizePct = project.totalBudget > 0
-      ? Number((Math.min(1, (totalReleasedFromTx / Math.max(project.transactions.length, 1)) / project.totalBudget) * 100).toFixed(2))
+    const totalReleasedFromTx = project.transactions.reduce((acc, tx) => acc + Number(tx.amount || 0), 0);
+    const meanReleaseSizePct = totalBudgetPaise > 0
+      ? Number((Math.min(1, (totalReleasedFromTx / Math.max(project.transactions.length, 1)) / totalBudgetPaise) * 100).toFixed(2))
       : 0;
 
     const latestProofDescription =

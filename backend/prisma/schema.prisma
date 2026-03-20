@@ -31,8 +31,8 @@ model Project {
   projectId            String        @unique // Human-readable ID (e.g., proj-001)
   name                 String
   description          String?
-  totalBudget          Int           // In paise (1/100 INR)
-  fundsReleased        Int           @default(0)
+  totalBudget          BigInt        // In paise (1/100 INR)
+  fundsReleased        BigInt        @default(0)
   location             String
   startDate            DateTime
   endDate              DateTime
@@ -59,7 +59,7 @@ model Project {
 model Transaction {
   id                 String   @id @default(uuid())
   projectId          String
-  amount             Int      // In paise
+  amount             BigInt   // In paise
   purpose            String
   releaseDate        DateTime
   blockchainTxHash   String   @unique
@@ -94,7 +94,7 @@ model Milestone {
   id                          String   @id @default(uuid())
   projectId                   String
   name                        String
-  escrowAmount                Int
+  escrowAmount                BigInt
   requiredProofCount          Int      @default(0)
   requiredCompletionPercentage Int     @default(0)
   status                      String   @default("pending") // pending, approved, completed
@@ -110,7 +110,7 @@ model FundReleaseRequest {
   id             String   @id @default(uuid())
   projectId      String
   milestoneId    String?
-  amount         Int
+  amount         BigInt
   purpose        String
   status         String   @default("pending_checker") // pending_checker, pending_approver, rejected, executed
 
